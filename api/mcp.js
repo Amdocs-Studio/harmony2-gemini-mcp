@@ -404,5 +404,22 @@ router.get('/health', (req, res) => {
   });
 });
 
+/**
+ * GET handler for MCP endpoint (Cursor might check this)
+ */
+router.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'Harmony 2.0 MCP Server',
+    version: process.env.MCP_SERVER_VERSION || '1.0.0',
+    protocol: 'MCP HTTP',
+    endpoints: {
+      initialize: 'POST /mcp with {"method": "initialize"}',
+      toolsList: 'POST /mcp with {"method": "tools/list"}',
+      toolsCall: 'POST /mcp with {"method": "tools/call", "params": {...}}',
+    },
+  });
+});
+
 export default router;
 
