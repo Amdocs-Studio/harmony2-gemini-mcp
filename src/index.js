@@ -94,8 +94,15 @@ app.post('/api/guidance', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Harmony 2.0 Master Agent API running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-});
+// Export for Vercel (when imported)
+export default app;
+
+// Start server for local development
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Harmony 2.0 Master Agent API running on port ${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+    console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
+  });
+}
 
