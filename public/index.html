@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Harmony 2.0 Chat</title>
+    <!-- Syntax highlighting stylesheet -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 800px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message.user {
+            align-items: flex-end;
+        }
+
+        .message.assistant {
+            align-items: flex-start;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            line-height: 1.6;
+        }
+
+        /* Markdown styling for assistant messages */
+        .message.assistant .message-bubble {
+            font-size: 14px;
+        }
+
+        .message.assistant .message-bubble h1,
+        .message.assistant .message-bubble h2,
+        .message.assistant .message-bubble h3,
+        .message.assistant .message-bubble h4 {
+            margin: 12px 0 8px 0;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .message.assistant .message-bubble h1 {
+            font-size: 20px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 8px;
+        }
+
+        .message.assistant .message-bubble h2 {
+            font-size: 18px;
+        }
+
+        .message.assistant .message-bubble h3 {
+            font-size: 16px;
+        }
+
+        .message.assistant .message-bubble p {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+
+        .message.assistant .message-bubble ul,
+        .message.assistant .message-bubble ol {
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+
+        .message.assistant .message-bubble li {
+            margin: 4px 0;
+            line-height: 1.5;
+        }
+
+        .message.assistant .message-bubble code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #e83e8c;
+        }
+
+        .message.assistant .message-bubble pre {
+            background: #f6f8fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 12px 0;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .message.assistant .message-bubble pre code {
+            background: transparent;
+            padding: 0;
+            color: #333;
+            font-size: inherit;
+        }
+
+        .message.assistant .message-bubble blockquote {
+            border-left: 4px solid #667eea;
+            padding-left: 12px;
+            margin: 12px 0;
+            color: #666;
+            font-style: italic;
+        }
+
+        .message.assistant .message-bubble a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .message.assistant .message-bubble a:hover {
+            text-decoration: underline;
+        }
+
+        .message.assistant .message-bubble strong {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .message.assistant .message-bubble em {
+            font-style: italic;
+        }
+
+        .message.assistant .message-bubble hr {
+            border: none;
+            border-top: 1px solid #e0e0e0;
+            margin: 16px 0;
+        }
+
+        .message.assistant .message-bubble table {
+            border-collapse: collapse;
+            margin: 12px 0;
+            width: 100%;
+        }
+
+        .message.assistant .message-bubble table th,
+        .message.assistant .message-bubble table td {
+            border: 1px solid #e0e0e0;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        .message.assistant .message-bubble table th {
+            background: #f6f8fa;
+            font-weight: 600;
+        }
+
+        .message.user .message-bubble {
+            background: #667eea;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.assistant .message-bubble {
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 4px;
+            padding: 0 4px;
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .chat-input-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+
+        .send-button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .send-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 Harmony 2.0 Master Agent</h1>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message assistant">
+                <div class="message-bubble">
+                    👋 Hello! I'm the Harmony 2.0 Master Agent. Ask me anything about Harmony 2.0 development, architecture, or best practices!
+                </div>
+                <div class="message-time">Just now</div>
+            </div>
+        </div>
+        <div class="chat-input-container">
+            <form class="chat-input-form" id="chatForm">
+                <input 
+                    type="text" 
+                    class="chat-input" 
+                    id="messageInput" 
+                    placeholder="Ask about Harmony 2.0..."
+                    autocomplete="off"
+                />
+                <button type="submit" class="send-button" id="sendButton">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Markdown parser and syntax highlighter - loaded before inline script -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
+    <script>
+        const API_URL = window.location.origin;
+        const chatMessages = document.getElementById('chatMessages');
+        const chatForm = document.getElementById('chatForm');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+
+        // Wait for libraries to load
+        function initMarkdown() {
+            if (typeof marked === 'undefined' || typeof hljs === 'undefined') {
+                console.warn('Markdown libraries not loaded yet');
+                return false;
+            }
+            
+            // Configure marked for markdown parsing
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                headerIds: false,
+                mangle: false
+            });
+            
+            return true;
+        }
+
+        function formatMarkdown(text) {
+            // Check if libraries are loaded
+            if (!initMarkdown()) {
+                // Fallback: just preserve line breaks
+                return text.replace(/\n/g, '<br>');
+            }
+            
+            // First, normalize line breaks
+            let formatted = text
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n');
+            
+            // Convert markdown to HTML
+            const html = marked.parse(formatted);
+            
+            // Create a temporary div to parse the HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            
+            // Highlight code blocks
+            tempDiv.querySelectorAll('pre code').forEach((block) => {
+                try {
+                    hljs.highlightElement(block);
+                } catch (e) {
+                    console.warn('Syntax highlighting failed:', e);
+                }
+            });
+            
+            return tempDiv.innerHTML;
+        }
+
+        function addMessage(text, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            
+            if (isUser) {
+                // User messages: plain text
+                bubble.textContent = text;
+            } else {
+                // Assistant messages: render markdown
+                bubble.innerHTML = formatMarkdown(text);
+            }
+            
+            const time = document.createElement('div');
+            time.className = 'message-time';
+            time.textContent = new Date().toLocaleTimeString();
+            
+            messageDiv.appendChild(bubble);
+            messageDiv.appendChild(time);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            return messageDiv;
+        }
+
+        function addLoadingMessage() {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            messageDiv.id = 'loadingMessage';
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.innerHTML = '<div class="loading"></div>';
+            
+            messageDiv.appendChild(bubble);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            return messageDiv;
+        }
+
+        function removeLoadingMessage() {
+            const loading = document.getElementById('loadingMessage');
+            if (loading) {
+                loading.remove();
+            }
+        }
+
+        async function sendMessage(message) {
+            try {
+                sendButton.disabled = true;
+                sendButton.innerHTML = '<div class="loading"></div>';
+                
+                const loadingMsg = addLoadingMessage();
+                
+                const response = await fetch(`${API_URL}/api/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        context: {}
+                    })
+                });
+
+                removeLoadingMessage();
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to get response');
+                }
+
+                const data = await response.json();
+                addMessage(data.response, false);
+            } catch (error) {
+                removeLoadingMessage();
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.textContent = `Error: ${error.message}`;
+                chatMessages.appendChild(errorDiv);
+                console.error('Error:', error);
+            } finally {
+                sendButton.disabled = false;
+                sendButton.textContent = 'Send';
+            }
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            addMessage(message, true);
+            messageInput.value = '';
+            await sendMessage(message);
+        });
+
+        // Allow Enter to send (Shift+Enter for new line)
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+</body>
+</html>
+

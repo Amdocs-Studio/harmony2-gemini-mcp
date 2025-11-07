@@ -1,10 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
 import { HarmonyAgent } from './harmony-agent.js';
 import mcpRouter from '../api/mcp.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -91,6 +97,26 @@ app.post('/api/guidance', async (req, res) => {
   } catch (error) {
     console.error('Guidance error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Serve chat UI (fallback if static file serving doesn't work)
+app.get('/', (req, res) => {
+  try {
+    const htmlPath = join(__dirname, '../public/index.html');
+    const html = readFileSync(htmlPath, 'utf8');
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (error) {
+    console.error('Error serving chat UI:', error);
+    res.status(404).send(`
+      <html>
+        <body>
+          <h1>Chat UI not found</h1>
+          <p>Please ensure public/index.html exists</p>
+        </body>
+      </html>
+    `);
   }
 });
 
