@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { HarmonyAgent } from './harmony-agent.js';
+import mcpRouter from '../api/mcp.js';
 
 dotenv.config();
 
@@ -10,6 +11,9 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// MCP endpoint (for local testing)
+app.use('/mcp', mcpRouter);
 
 const agent = new HarmonyAgent();
 
