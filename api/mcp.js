@@ -6,20 +6,78 @@ import { HarmonyAgent } from '../src/harmony-agent.js';
 dotenv.config();
 
 const router = express.Router();
-router.use(cors());
+router.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
 router.use(express.json());
+
+// Handle OPTIONS requests for CORS
+router.options('/', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(200);
+});
 
 const agent = new HarmonyAgent();
 
 // Unified MCP endpoint - handles all MCP protocol messages
 router.post('/', async (req, res) => {
-  const { method, params } = req.body;
+  // Extract JSON-RPC 2.0 fields
+  const { method, params, jsonrpc, id } = req.body;
+
+  // Set MCP-specific headers
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Debug logging
+  console.log('[MCP] Received request:', {
+    method,
+    params,
+    jsonrpc,
+    id,
+    body: req.body,
+    headers: req.headers,
+    url: req.url,
+    path: req.path
+  });
+
+  // Helper to send JSON-RPC 2.0 response
+  const sendResponse = (result) => {
+    const response = {
+      jsonrpc: '2.0',
+      id: id !== undefined ? id : null,
+      result: result
+    };
+    console.log('[MCP] Sending JSON-RPC response:', JSON.stringify(response, null, 2));
+    return res.json(response);
+  };
+
+  // Helper to send JSON-RPC 2.0 error
+  const sendError = (code, message, data = null) => {
+    const response = {
+      jsonrpc: '2.0',
+      id: id !== undefined ? id : null,
+      error: {
+        code,
+        message,
+        ...(data && { data })
+      }
+    };
+    console.log('[MCP] Sending JSON-RPC error:', JSON.stringify(response, null, 2));
+    return res.json(response);
+  };
 
   try {
     switch (method) {
-      case 'initialize':
-        return res.json({
-          protocolVersion: '2024-11-05',
+      case 'initialize': {
+        const result = {
+          protocolVersion: '2025-06-18', // Match Cursor's protocol version
           capabilities: {
             tools: {},
           },
@@ -27,11 +85,12 @@ router.post('/', async (req, res) => {
             name: process.env.MCP_SERVER_NAME || 'harmony2-master',
             version: process.env.MCP_SERVER_VERSION || '1.0.0',
           },
-        });
+        };
+        return sendResponse(result);
+      }
 
-      case 'tools/list':
-        return res.json({
-          tools: [
+      case 'tools/list': {
+        const tools = [
             {
               name: 'harmony_chat',
               description: 'Chat with the Harmony 2.0 Master Agent. Ask questions about Harmony 2.0, get guidance, or request help with development tasks.',
@@ -103,14 +162,15 @@ router.post('/', async (req, res) => {
                 required: ['topic'],
               },
             },
-          ],
-        });
+          ];
+        return sendResponse({ tools });
+      }
 
       case 'tools/call': {
         const { name, arguments: args } = params || {};
 
         if (!name) {
-          return res.status(400).json({ error: 'Tool name is required' });
+          return sendError(-32602, 'Tool name is required');
         }
 
         let result;
@@ -118,7 +178,7 @@ router.post('/', async (req, res) => {
         switch (name) {
           case 'harmony_chat': {
             if (!args || !args.message) {
-              return res.status(400).json({ error: 'Message is required' });
+              return sendError(-32602, 'Message is required');
             }
             result = await agent.chat(args.message, args.context || {});
             break;
@@ -126,7 +186,7 @@ router.post('/', async (req, res) => {
 
           case 'harmony_analyze_code': {
             if (!args || !args.code) {
-              return res.status(400).json({ error: 'Code is required' });
+              return sendError(-32602, 'Code is required');
             }
             result = await agent.analyzeCode(
               args.code,
@@ -137,7 +197,7 @@ router.post('/', async (req, res) => {
 
           case 'harmony_generate_code': {
             if (!args || !args.description) {
-              return res.status(400).json({ error: 'Description is required' });
+              return sendError(-32602, 'Description is required');
             }
             result = await agent.generateCode(
               args.description,
@@ -148,17 +208,17 @@ router.post('/', async (req, res) => {
 
           case 'harmony_get_guidance': {
             if (!args || !args.topic) {
-              return res.status(400).json({ error: 'Topic is required' });
+              return sendError(-32602, 'Topic is required');
             }
             result = await agent.getGuidance(args.topic);
             break;
           }
 
           default:
-            return res.status(400).json({ error: `Unknown tool: ${name}` });
+            return sendError(-32601, `Unknown tool: ${name}`);
         }
 
-        return res.json({
+        return sendResponse({
           content: [
             {
               type: 'text',
@@ -169,19 +229,13 @@ router.post('/', async (req, res) => {
       }
 
       default:
-        return res.status(400).json({ error: `Unknown method: ${method}` });
+        console.log('[MCP] Unknown method:', method);
+        return sendError(-32601, `Unknown method: ${method}`);
     }
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-      content: [
-        {
-          type: 'text',
-          text: `Error: ${error.message}`,
-        },
-      ],
-      isError: true,
-    });
+    console.error('[MCP] Error processing request:', error);
+    console.error('[MCP] Error stack:', error.stack);
+    return sendError(-32603, 'Internal error', { message: error.message });
   }
 });
 
@@ -408,7 +462,13 @@ router.get('/health', (req, res) => {
  * GET handler for MCP endpoint (Cursor might check this)
  */
 router.get('/', (req, res) => {
-  res.json({
+  console.log('[MCP] GET request received:', {
+    url: req.url,
+    path: req.path,
+    headers: req.headers
+  });
+  
+  const response = {
     status: 'ok',
     service: 'Harmony 2.0 MCP Server',
     version: process.env.MCP_SERVER_VERSION || '1.0.0',
@@ -418,7 +478,10 @@ router.get('/', (req, res) => {
       toolsList: 'POST /mcp with {"method": "tools/list"}',
       toolsCall: 'POST /mcp with {"method": "tools/call", "params": {...}}',
     },
-  });
+  };
+  
+  console.log('[MCP] GET response:', JSON.stringify(response, null, 2));
+  res.json(response);
 });
 
 export default router;
