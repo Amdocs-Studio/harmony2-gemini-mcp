@@ -1,21 +1,30 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Cache directory
-const CACHE_DIR = path.join(__dirname, '../.cache');
+// Check if we're in a serverless environment (Vercel, etc.)
+const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === 'production' && !fs.existsSync(path.join(__dirname, '../.cache'));
+
+// Cache directory - use /tmp in serverless, .cache locally
+const CACHE_DIR = isServerless ? path.join(os.tmpdir(), 'harmony-cache') : path.join(__dirname, '../.cache');
 const FILE_TREE_CACHE = path.join(CACHE_DIR, 'file-tree.json');
 const FILE_CONTENT_CACHE_DIR = path.join(CACHE_DIR, 'files');
 
-// Ensure cache directories exist
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
-if (!fs.existsSync(FILE_CONTENT_CACHE_DIR)) {
-  fs.mkdirSync(FILE_CONTENT_CACHE_DIR, { recursive: true });
+// Ensure cache directories exist (only if we can write)
+try {
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(FILE_CONTENT_CACHE_DIR)) {
+    fs.mkdirSync(FILE_CONTENT_CACHE_DIR, { recursive: true });
+  }
+} catch (error) {
+  // If we can't create cache dir (serverless), use in-memory only
+  console.warn('[GitHub Cache] Cannot create cache directory, using in-memory cache only');
 }
 
 /**
@@ -27,6 +36,8 @@ export class GitHubCache {
     this.fileTree = null;
     this.fileTreeCacheTime = null;
     this.cacheTTL = 24 * 60 * 60 * 1000; // 24 hours for file tree
+    this.inMemoryCache = new Map(); // Fallback for serverless
+    this.canWriteToDisk = true; // Will be set based on filesystem access
   }
 
   /**
@@ -43,8 +54,8 @@ export class GitHubCache {
     }
 
     // Check disk cache
-    if (fs.existsSync(FILE_TREE_CACHE)) {
-      try {
+    try {
+      if (fs.existsSync(FILE_TREE_CACHE)) {
         const cacheData = JSON.parse(fs.readFileSync(FILE_TREE_CACHE, 'utf8'));
         const age = Date.now() - cacheData.timestamp;
         
@@ -54,9 +65,11 @@ export class GitHubCache {
           this.fileTreeCacheTime = cacheData.timestamp;
           return this.fileTree;
         }
-      } catch (error) {
-        console.warn('[GitHub Cache] Error reading file tree cache:', error.message);
       }
+    } catch (error) {
+      // Disk cache not available, will use in-memory or fetch
+      console.warn('[GitHub Cache] Disk cache not available, using in-memory');
+      this.canWriteToDisk = false;
     }
 
     // Fetch from GitHub API
@@ -81,14 +94,22 @@ export class GitHubCache {
       const data = await response.json();
       const tree = data.tree.filter(item => item.type === 'blob'); // Only files, not directories
 
-      // Cache to disk
+      // Cache to disk (if possible) or in-memory
       const cacheData = {
         tree,
         timestamp: Date.now(),
         branch,
         sha: data.sha
       };
-      fs.writeFileSync(FILE_TREE_CACHE, JSON.stringify(cacheData, null, 2));
+      
+      try {
+        fs.writeFileSync(FILE_TREE_CACHE, JSON.stringify(cacheData, null, 2));
+      } catch (error) {
+        // Can't write to disk (serverless), use in-memory
+        console.warn('[GitHub Cache] Cannot write to disk, using in-memory cache');
+        this.canWriteToDisk = false;
+        this.inMemoryCache.set('file-tree', cacheData);
+      }
 
       // Cache in memory
       this.fileTree = tree;
@@ -110,17 +131,26 @@ export class GitHubCache {
     const cacheKey = filePath.replace(/[^a-zA-Z0-9]/g, '_');
     const cacheFile = path.join(FILE_CONTENT_CACHE_DIR, `${cacheKey}.json`);
 
+    // Check in-memory cache first
+    const memKey = `file:${filePath}`;
+    if (this.inMemoryCache.has(memKey)) {
+      console.log(`[GitHub Cache] Using in-memory cached content for ${filePath}`);
+      return this.inMemoryCache.get(memKey);
+    }
+
     // Check disk cache
-    if (fs.existsSync(cacheFile)) {
-      try {
+    try {
+      if (fs.existsSync(cacheFile)) {
         const cacheData = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
         // Cache never expires for file content (unless file changes in repo)
-        // We could add SHA checking here for more accuracy
         console.log(`[GitHub Cache] Using cached content for ${filePath}`);
+        // Also cache in memory
+        this.inMemoryCache.set(memKey, cacheData.content);
         return cacheData.content;
-      } catch (error) {
-        console.warn(`[GitHub Cache] Error reading cache for ${filePath}:`, error.message);
       }
+    } catch (error) {
+      // Disk cache not available
+      this.canWriteToDisk = false;
     }
 
     // Fetch from GitHub
@@ -146,16 +176,27 @@ export class GitHubCache {
 
       const content = await response.text();
 
-      // Cache to disk
+      // Cache to disk (if possible) or in-memory
       const cacheData = {
         content,
         filePath,
         timestamp: Date.now(),
         branch
       };
-      fs.writeFileSync(cacheFile, JSON.stringify(cacheData, null, 2));
+      
+      // Always cache in memory
+      this.inMemoryCache.set(memKey, content);
+      
+      // Try to cache to disk
+      try {
+        fs.writeFileSync(cacheFile, JSON.stringify(cacheData, null, 2));
+        console.log(`[GitHub Cache] Cached ${filePath} to disk (${content.length} chars)`);
+      } catch (error) {
+        // Can't write to disk (serverless), in-memory cache is enough
+        console.log(`[GitHub Cache] Cached ${filePath} in memory (${content.length} chars)`);
+        this.canWriteToDisk = false;
+      }
 
-      console.log(`[GitHub Cache] Cached ${filePath} (${content.length} chars)`);
       return content;
     } catch (error) {
       console.error(`[GitHub Cache] Error fetching ${filePath}:`, error.message);

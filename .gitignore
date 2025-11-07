@@ -7,4 +7,5 @@ build/
 .vscode/
 .idea/
 .cache/
+api/
 
